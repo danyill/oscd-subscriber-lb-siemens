@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2"
+  xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file target-language="pt" source-language="en" original="lit-localize-inputs" datatype="plaintext">
+    <body>
+      <trans-unit id="s31b126d31226accd">
+        <source>Subscriber Later Binding - Siemens</source>
+        <target>Vinculação de Assinante Posterior - Siemens</target>
+      </trans-unit>
+      <trans-unit id="s55e247235f637dbd">
+        <source>This plugin works with the</source>
+        <target>Este plugin funciona com o</target>
+      </trans-unit>
+      <trans-unit id="s2813accd17e88786">
+        <source>to provide enhancements for SIPROTEC 5 devices.</source>
+        <target>para fornecer melhorias para dispositivos SIPROTEC 5.</target>
+      </trans-unit>
+      <trans-unit id="s074ad46563eaf3db">
+        <source>Automatic quality mapping</source>
+        <target>Mapeamento automático de qualidade</target>
+      </trans-unit>
+      <trans-unit id="s21340f1764775ba9">
+        <source>Automatic multi-phase mapping</source>
+        <target>Mapeamento automático de múltiplas fases</target>
+      </trans-unit>
+      <trans-unit id="s965c503c3e42fdfe">
+        <source>Enabled</source>
+        <target>Ativado</target>
+      </trans-unit>
+      <trans-unit id="s5e8250fb85d64c23">
+        <source>Close</source>
+        <target>Fechar</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

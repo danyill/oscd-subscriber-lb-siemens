@@ -1,3 +1,4 @@
+/* eslint-disable no-shadow */
 import { isSCLTag, relatives, SCLTag } from '../utils/scldata.js';
 import { tags } from './scltags.js';
 

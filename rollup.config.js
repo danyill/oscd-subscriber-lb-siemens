@@ -3,7 +3,7 @@ import typescript from '@rollup/plugin-typescript';
 import copy from 'rollup-plugin-copy';
 
 export default {
-  input: './oscd-subscriber-later-binding.ts',
+  input: './oscd-subscriber-lb-siemens.ts',
   output: {
     sourcemap: true, // Add source map to build output
     format: 'es', // ES module type export

@@ -5870,7 +5870,7 @@ function fcdaBaseTypes(fcda) {
     return dataAttributeSpecification(anyLn, doName, daName);
 }
 
-const dataObjects = await fetch(new URL("../foundation/nsd.json", import.meta.url)).then((res) => res.json());
+const dataObjects = await fetch(new URL(new URL('assets/nsd-0a370a57.json', import.meta.url).href, import.meta.url)).then((res) => res.json());
 /**
  * This function returns the common data class `CDC` of the
  * specified data object `pDO` and the basic type of the specified

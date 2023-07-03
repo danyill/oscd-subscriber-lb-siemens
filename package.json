@@ -36,7 +36,6 @@
     "@material/mwc-switch": "^0.27.0",
     "@openenergytools/scl-lib": "^0.2.1",
     "@openscd/open-scd-core": "^0.0.2",
-    "@web/rollup-plugin-import-meta-assets": "^2.0.0",
     "lit": "^2.4.0"
   },
   "devDependencies": {
@@ -52,6 +51,7 @@
     "@typescript-eslint/eslint-plugin": "^5.41.0",
     "@typescript-eslint/parser": "^5.41.0",
     "@web/dev-server": "^0.1.35",
+    "@web/rollup-plugin-import-meta-assets": "^2.0.0",
     "@web/test-runner": "^0.15.0",
     "@web/test-runner-commands": "^0.6.6",
     "@web/test-runner-playwright": "^0.9.0",

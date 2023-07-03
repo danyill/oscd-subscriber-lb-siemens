@@ -6303,7 +6303,15 @@ class SubscriberLaterBindingSiemens extends s {
     constructor() {
         super();
         this.enabled = localStorage.getItem('oscd-subscriber-lb-siemens') === 'true';
-        window.addEventListener('oscd-edit', event => this.createAdditionalExtRefs(event));
+        // window.addEventListener(
+        //   'oscd-edit',
+        //   event => this.createAdditionalExtRefs(event as EditEvent),
+        //   { capture: true }
+        //   // event.target => plugin and then can get some attribute or something.
+        // );
+        window.addEventListener('oscd-edit', event => this.createAdditionalExtRefs(event)
+        // event.target => plugin and then can get some attribute or something.
+        );
     }
     async run() {
         if (this.dialogUI)

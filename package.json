@@ -35,7 +35,8 @@
     "@material/mwc-formfield": "^0.27.0",
     "@material/mwc-switch": "^0.27.0",
     "@openenergytools/scl-lib": "^0.2.1",
-    "@openscd/open-scd-core": "^0.0.1-rc2.8",
+    "@openscd/open-scd-core": "^0.0.2",
+    "@web/rollup-plugin-import-meta-assets": "^2.0.0",
     "lit": "^2.4.0"
   },
   "devDependencies": {

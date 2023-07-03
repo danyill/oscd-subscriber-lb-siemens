@@ -186,8 +186,17 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
   constructor() {
     super();
 
-    window.addEventListener('oscd-edit', event =>
-      this.createAdditionalExtRefs(event as EditEvent)
+    // window.addEventListener(
+    //   'oscd-edit',
+    //   event => this.createAdditionalExtRefs(event as EditEvent),
+    //   { capture: true }
+    //   // event.target => plugin and then can get some attribute or something.
+    // );
+
+    window.addEventListener(
+      'oscd-edit',
+      event => this.createAdditionalExtRefs(event as EditEvent)
+      // event.target => plugin and then can get some attribute or something.
     );
   }
 
@@ -282,10 +291,6 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
         this.processSiemensExtRef(extRef);
       }
     });
-  }
-
-  protected firstUpdated(): void {
-    this.parentElement?.setAttribute('style', 'opacity: 1');
   }
 
   render(): TemplateResult {

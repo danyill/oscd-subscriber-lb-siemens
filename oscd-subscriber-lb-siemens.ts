@@ -287,7 +287,7 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
   protected firstUpdated(): void {
     this.parentElement?.setAttribute('style', 'opacity: 1');
   }
-  
+
   render(): TemplateResult {
     return html`<mwc-dialog
       id="dialog"

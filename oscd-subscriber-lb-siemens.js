@@ -4978,6 +4978,212 @@ Array(maxLnInst)
     .fill(1)
     .map((_, i) => `${i + 1}`);
 
+function isInputLeaf(input, allInputs) {
+    let sameInputs = 0;
+    for (const value of allInputs)
+        if (value === input)
+            sameInputs++;
+    return input.querySelectorAll("ExtRef").length === sameInputs;
+}
+/**
+ * Makes sure to not leave empty `Inputs` element after removing
+ * its child `ExtRef` elements using [[`extRefActions`]]
+ * @returns Actions to remove `Inputs` when empty
+ * */
+function removeInputs(extRefs) {
+    const removeInputs = [];
+    const parentInputs = extRefs
+        .map((remove) => remove.node.parentElement)
+        .filter((input) => input);
+    parentInputs.forEach((input, _index, inputs) => {
+        const inputNotRemovedYet = !removeInputs.some((removeInput) => removeInput.node === input);
+        if (isInputLeaf(input, inputs) && inputNotRemovedYet)
+            removeInputs.push({ node: input });
+    });
+    return extRefs.concat(removeInputs);
+}
+
+/** @returns object reference acc. IEC 61850-7-3 for control block elements */
+function controlBlockObjRef(ctrlBlock) {
+    const iedName = ctrlBlock.closest("IED")?.getAttribute("name");
+    const ldInst = ctrlBlock.closest("LDevice")?.getAttribute("inst");
+    const parentLn = ctrlBlock.closest("LN,LN0");
+    const prefix = parentLn?.getAttribute("prefix") ?? "";
+    const lnClass = parentLn?.getAttribute("lnClass");
+    const lnInst = parentLn?.getAttribute("inst") ?? "";
+    const cbName = ctrlBlock.getAttribute("name");
+    if (!iedName || !ldInst || !lnClass || !cbName)
+        return null;
+    return `${iedName}${ldInst}/${prefix}${lnClass}${lnInst}.${cbName}`;
+}
+
+/** @returns control block or null for a given external reference */
+function sourceControlBlock(extRef) {
+    const [iedName, srcLDInst, srcPrefix, srcLNClass, srcLNInst, srcCBName] = [
+        "iedName",
+        "srcLDInst",
+        "srcPrefix",
+        "srcLNClass",
+        "srcLNInst",
+        "srcCBName",
+    ].map((attr) => extRef.getAttribute(attr) ?? "");
+    return (Array.from(extRef.ownerDocument.querySelectorAll(`IED[name="${iedName}"] ReportControl, 
+          IED[name="${iedName}"] GSEControl, 
+          IED[name="${iedName}"] SampledValueControl`)).find((cBlock) => cBlock.closest("LDevice").getAttribute("inst") === srcLDInst &&
+        (cBlock.closest("LN, LN0").getAttribute("prefix") ?? "") ===
+            srcPrefix &&
+        cBlock.closest("LN, LN0").getAttribute("lnClass") === srcLNClass &&
+        cBlock.closest("LN, LN0").getAttribute("inst") === srcLNInst &&
+        cBlock.getAttribute("name") === srcCBName) ?? null);
+}
+
+/** @returns Element to remove the subscription supervision */
+function removableSupervisionElement(ctrlBlock, subscriberIed) {
+    const supervisionType = ctrlBlock.tagName === "GSEControl" ? "LGOS" : "LSVS";
+    const valElement = Array.from(subscriberIed.querySelectorAll(`LN[lnClass="${supervisionType}"] > DOI > DAI > Val`)).find((val) => val.textContent === controlBlockObjRef(ctrlBlock));
+    if (!valElement)
+        return null;
+    const ln = valElement.closest("LN");
+    const doi = valElement.closest("DOI");
+    // do not remove logical nodes `LGOS`, `LSVS` unless privately tagged
+    const canRemoveLn = ln.querySelector(':scope > Private[type="OpenSCD.create"]');
+    return canRemoveLn ? ln : doi;
+}
+/** @returns Whether `DA` with name `setSrcRef`  can edited by SCL editor */
+function isSrcRefEditable(ctrlBlock, subscriberIed) {
+    const supervisionElement = removableSupervisionElement(ctrlBlock, subscriberIed);
+    const ln = supervisionElement?.closest("LN") ?? null;
+    if (!ln)
+        return false;
+    if (supervisionElement?.querySelector(':scope DAI[name="setSrcRef"][valImport="true"][valKind="RO"],' +
+        ' :scope DAI[name="setSrcRef"][valImport="true"][valKind="Conf"]'))
+        return true;
+    const rootNode = ln.ownerDocument;
+    const lnClass = ln.getAttribute("lnClass");
+    const cbRefType = lnClass === "LGOS" ? "GoCBRef" : "SvCBRef";
+    const lnType = ln.getAttribute("lnType");
+    const goOrSvCBRef = rootNode.querySelector(`DataTypeTemplates > 
+        LNodeType[id="${lnType}"][lnClass="${lnClass}"] > DO[name="${cbRefType}"]`);
+    const cbRefId = goOrSvCBRef?.getAttribute("type");
+    const setSrcRef = rootNode.querySelector(`DataTypeTemplates > DOType[id="${cbRefId}"] > DA[name="setSrcRef"]`);
+    return ((setSrcRef?.getAttribute("valKind") === "Conf" ||
+        setSrcRef?.getAttribute("valKind") === "RO") &&
+        setSrcRef.getAttribute("valImport") === "true");
+}
+/** @returns Whether other subscribed ExtRef of the same control block exist */
+function isControlBlockSubscribed(extRefs) {
+    const [srcCBName, srcLDInst, srcLNClass, iedName, srcPrefix, srcLNInst, serviceType,] = [
+        "srcCBName",
+        "srcLDInst",
+        "srcLNClass",
+        "iedName",
+        "srcPrefix",
+        "srcLNInst",
+        "serviceType",
+    ].map((attr) => extRefs[0].getAttribute(attr));
+    const parentIed = extRefs[0].closest("IED");
+    return Array.from(parentIed.getElementsByTagName("ExtRef")).some((otherExtRef) => !extRefs.includes(otherExtRef) &&
+        (otherExtRef.getAttribute("srcPrefix") ?? "") === (srcPrefix ?? "") &&
+        (otherExtRef.getAttribute("srcLNInst") ?? "") === (srcLNInst ?? "") &&
+        otherExtRef.getAttribute("srcCBName") === srcCBName &&
+        otherExtRef.getAttribute("srcLDInst") === srcLDInst &&
+        otherExtRef.getAttribute("srcLNClass") === srcLNClass &&
+        otherExtRef.getAttribute("iedName") === iedName &&
+        otherExtRef.getAttribute("serviceType") === serviceType);
+}
+function cannotRemoveSupervision(extRefGroup) {
+    return (isControlBlockSubscribed(extRefGroup.extRefs) ||
+        !isSrcRefEditable(extRefGroup.ctrlBlock, extRefGroup.subscriberIed));
+}
+function groupPerControlBlock(extRefs) {
+    const groupedExtRefs = {};
+    extRefs.forEach((extRef) => {
+        const ctrlBlock = sourceControlBlock(extRef);
+        if (ctrlBlock) {
+            const ctrlBlockRef = controlBlockObjRef(ctrlBlock);
+            if (groupedExtRefs[ctrlBlockRef])
+                groupedExtRefs[ctrlBlockRef].extRefs.push(extRef);
+            else
+                groupedExtRefs[ctrlBlockRef] = {
+                    extRefs: [extRef],
+                    ctrlBlock,
+                    subscriberIed: extRef.closest("IED"),
+                };
+        }
+    });
+    return groupedExtRefs;
+}
+/** Removes subscription supervision - `LGOS` or `LSVS` - when no other data
+ * of a given `GSEControl` or `SampledValueControl`
+ * @param extRefs - An array of external reference elements
+ * @returns Actions to remove subscription supervision `LGOS` or `LSVS`
+ */
+function removeSubscriptionSupervision(extRefs) {
+    if (extRefs.length === 0)
+        return [];
+    const groupedExtRefs = groupPerControlBlock(extRefs);
+    return Object.values(groupedExtRefs)
+        .map((extRefGroup) => {
+        if (cannotRemoveSupervision(extRefGroup))
+            return null;
+        return removableSupervisionElement(extRefGroup.ctrlBlock, extRefGroup.subscriberIed);
+    })
+        .filter((element) => element).map((node) => ({ node }));
+}
+
+/**
+ * Remove link between sending IED data to receiving IED external
+ * references - unsubscribing.
+ * ```md
+ * 1. Unsubscribes external references itself:
+ * -Update `ExtRef` in case later binging is used (existing `intAddr` attribute)
+ * -Remove `ExtRef` in case `intAddr` is missing
+ *
+ * 2. Removes leaf `Input` elements as well
+ * 3. Removes subscription supervision (can be disabled through options.ignoreSupervision)
+ * - when all external references of one control block are unsubscribed
+ * - when `valKind` RO|Conf and `valImport` true
+ * ```
+ * In case the external reference
+ * @param extRefs - Array of external references
+ * @returns An array of update and/or remove action representing changes required
+ * to unsubscribe.
+ */
+function unsubscribe(extRefs, options = { ignoreSupervision: false }) {
+    const updateActions = [];
+    const removeActions = [];
+    extRefs.map((extRef) => {
+        if (extRef.getAttribute("intAddr"))
+            updateActions.push({
+                element: extRef,
+                attributes: {
+                    iedName: null,
+                    ldInst: null,
+                    prefix: null,
+                    lnClass: null,
+                    lnInst: null,
+                    doName: null,
+                    daName: null,
+                    srcLDInst: null,
+                    srcPrefix: null,
+                    srcLNClass: null,
+                    srcLNInst: null,
+                    srcCBName: null,
+                    ...(extRef.getAttribute("pServT") && { serviceType: null }),
+                },
+            });
+        else
+            removeActions.push({ node: extRef });
+    });
+    return [
+        ...removeInputs(removeActions),
+        ...updateActions,
+        ...(options.ignoreSupervision
+            ? []
+            : removeSubscriptionSupervision(extRefs)),
+    ];
+}
+
 const tAbstractConductingEquipment = [
     "TransformerWinding",
     "ConductingEquipment",
@@ -6288,92 +6494,119 @@ function matchFCDAsToExtRefs(fcdas, extRefs) {
         const extRef = extRefs[idx];
         const extRefIntAddr = extRef.getAttribute('intAddr');
         const extRefLnClass = extRef.closest('LN').getAttribute('lnClass');
+        // subscription status must be the same after first ExtRef for a match
+        const subscriptionStatus = isSubscribed(extRef) || idx === 0;
         if (extRefIntAddr !== null && extRefLnClass !== null) {
             const fcdaIntAddr = `${fcda.getAttribute('doName')};${fcda.getAttribute('lnClass')}/${fcda.getAttribute('doName')}/${fcda.getAttribute('daName')}`;
             if (extRefIntAddr === fcdaIntAddr &&
                 extRefLnClass === fcda.getAttribute('lnClass') &&
-                (!isSubscribed(extRef) || idx === 0)) {
+                (isSubscribed(extRef) || idx === 0) === subscriptionStatus) {
                 matchedPairs.push([fcda, extRef]);
             }
         }
     }
     return matchedPairs;
 }
+function shouldListen(event) {
+    const initiatingTarget = event.composedPath()[0];
+    return (initiatingTarget instanceof Element &&
+        initiatingTarget.getAttribute('identity') ===
+            'danyill.oscd-subscriber-later-binding' &&
+        initiatingTarget.hasAttribute('allowexternalplugins'));
+}
 class SubscriberLaterBindingSiemens extends s {
     constructor() {
         super();
+        this.preEventExtRef = [];
         this.enabled = localStorage.getItem('oscd-subscriber-lb-siemens') === 'true';
-        // window.addEventListener(
-        //   'oscd-edit',
-        //   event => this.createAdditionalExtRefs(event as EditEvent),
-        //   { capture: true }
-        //   // event.target => plugin and then can get some attribute or something.
-        // );
-        window.addEventListener('oscd-edit', event => this.createAdditionalExtRefs(event)
-        // event.target => plugin and then can get some attribute or something.
-        );
+        // record information to capture intention
+        window.addEventListener('oscd-edit', event => this.captureMetadata(event), { capture: true });
+        window.addEventListener('oscd-edit', event => {
+            if (shouldListen(event))
+                this.modifyAdditionalExtRefs(event);
+        });
     }
     async run() {
         if (this.dialogUI)
             this.dialogUI.show();
     }
-    processSiemensExtRef(extRef) {
-        const nextExtRef = extRef.nextElementSibling;
-        const fcdas = findFCDAs(extRef);
+    captureMetadata(event) {
+        if (shouldListen(event)) {
+            // Infinity as 1 due to error type instantiation error
+            // https://github.com/microsoft/TypeScript/issues/49280
+            const flatEdits = [event.detail].flat(Infinity);
+            this.preEventExtRef = flatEdits.map(edit => {
+                if (isUpdate(edit) && edit.element.tagName === 'ExtRef')
+                    return this.doc.importNode(edit.element, true);
+                return null;
+            });
+        }
+    }
+    processSiemensExtRef(extRef, preEventExtRef) {
+        // look for change in subscription pre and post-event
+        if (!isSubscribed(extRef) &&
+            preEventExtRef &&
+            !isSubscribed(preEventExtRef))
+            return;
+        const wasSubscribed = preEventExtRef && isSubscribed(preEventExtRef);
+        const fcdas = isSubscribed(extRef)
+            ? findFCDAs(extRef)
+            : findFCDAs(preEventExtRef);
         let fcda;
         // eslint-disable-next-line prefer-destructuring
         if (fcdas)
             fcda = fcdas[0];
+        const nextExtRef = extRef.nextElementSibling;
         if (!nextExtRef || !fcda)
             return;
+        const controlBlock = findControlBlock(extRef);
         // See if we have a SV stream and if so do that
         const svOrdered = svOrderedFCDAs(fcda);
         if (svOrdered > 2) {
             const svExtRefs = Array.from(extRef.closest('LDevice').querySelectorAll('ExtRef'))
-                .slice(0, svOrdered)
                 .filter(compareExtRef => extRef.compareDocumentPosition(compareExtRef) !==
-                Node.DOCUMENT_POSITION_PRECEDING);
+                Node.DOCUMENT_POSITION_PRECEDING)
+                .slice(0, svOrdered);
             const svFCDAs = [fcda, ...getNextSiblings(fcda, svOrdered - 1)];
-            const controlBlock = findControlBlock(extRef);
             matchFCDAsToExtRefs(svFCDAs, svExtRefs).forEach(matchedPair => {
                 const mFcda = matchedPair[0];
                 const mExtRef = matchedPair[1];
                 // TODO: Refactor to multiple connections
-                this.dispatchEvent(newEditEvent(subscribe({
-                    sink: mExtRef,
-                    source: { fcda: mFcda, controlBlock },
-                })));
+                if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
+                    this.dispatchEvent(newEditEvent(subscribe({
+                        sink: mExtRef,
+                        source: { fcda: mFcda, controlBlock },
+                    })));
+                if (wasSubscribed && !isSubscribed(extRef))
+                    this.dispatchEvent(newEditEvent(unsubscribe([mExtRef])));
             });
         }
         // Else match value/quality pairs
         const nextFcda = fcda.nextElementSibling;
-        const controlBlock = findControlBlock(extRef);
         if (extRefMatchSiemens(extRef, nextExtRef) &&
             nextFcda &&
             fcdaMatchSiemens(fcda, nextFcda)) {
-            this.dispatchEvent(newEditEvent(subscribe({
-                sink: nextExtRef,
-                source: { fcda: nextFcda, controlBlock },
-            })));
+            if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
+                this.dispatchEvent(newEditEvent(subscribe({
+                    sink: nextExtRef,
+                    source: { fcda: nextFcda, controlBlock },
+                })));
+            if (wasSubscribed && !isSubscribed(extRef))
+                this.dispatchEvent(newEditEvent(unsubscribe([nextExtRef])));
         }
     }
-    createAdditionalExtRefs(event) {
+    modifyAdditionalExtRefs(event) {
         if (!this.enabled)
             return;
         // Infinity as 1 due to error type instantiation error
         // https://github.com/microsoft/TypeScript/issues/49280
         const flatEdits = [event.detail].flat(Infinity);
-        flatEdits.forEach(edit => {
-            var _a;
-            if (isUpdate(edit) && edit.element.tagName === 'ExtRef') {
-                const extRef = edit.element;
-                const iedManufacturer = (_a = extRef === null || extRef === void 0 ? void 0 : extRef.closest('IED')) === null || _a === void 0 ? void 0 : _a.getAttribute('manufacturer');
-                if (!(extRef &&
-                    isSubscribed(extRef) &&
-                    isSubscribedEv(edit) &&
-                    iedManufacturer === 'SIEMENS'))
-                    return;
-                this.processSiemensExtRef(extRef);
+        flatEdits.forEach((edit, index) => {
+            var _a, _b;
+            if (isUpdate(edit) &&
+                edit.element.tagName === 'ExtRef' &&
+                ((_b = (_a = edit.element) === null || _a === void 0 ? void 0 : _a.closest('IED')) === null || _b === void 0 ? void 0 : _b.getAttribute('manufacturer')) === 'SIEMENS') {
+                this.processSiemensExtRef(edit.element, this.preEventExtRef[index]);
             }
         });
     }

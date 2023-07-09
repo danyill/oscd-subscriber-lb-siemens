@@ -16,12 +16,14 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
     /** The document being edited as provided to plugins by [[`OpenSCD`]]. */
     doc: XMLDocument;
     docName: string;
+    preEventExtRef: (Element | null)[];
     dialogUI?: Dialog;
     enabledUI?: Switch;
     enabled: boolean;
     constructor();
     run(): Promise<void>;
-    protected processSiemensExtRef(extRef: Element): void;
-    protected createAdditionalExtRefs(event: EditEvent): void;
+    protected captureMetadata(event: EditEvent): void;
+    protected processSiemensExtRef(extRef: Element, preEventExtRef: Element | null): void;
+    protected modifyAdditionalExtRefs(event: EditEvent): void;
     render(): TemplateResult;
 }

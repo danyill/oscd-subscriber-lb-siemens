@@ -16,7 +16,7 @@ import {
   Update,
 } from '@openscd/open-scd-core';
 
-import { subscribe } from '@openenergytools/scl-lib';
+import { subscribe, unsubscribe } from '@openenergytools/scl-lib';
 import {
   findControlBlock,
   findFCDAs,
@@ -148,6 +148,8 @@ function matchFCDAsToExtRefs(
 
     const extRefIntAddr = extRef.getAttribute('intAddr');
     const extRefLnClass = extRef.closest('LN')!.getAttribute('lnClass');
+    // subscription status must be the same after first ExtRef for a match
+    const subscriptionStatus = isSubscribed(extRef) || idx === 0;
 
     if (extRefIntAddr !== null && extRefLnClass !== null) {
       const fcdaIntAddr = `${fcda.getAttribute('doName')};${fcda.getAttribute(
@@ -157,7 +159,7 @@ function matchFCDAsToExtRefs(
       if (
         extRefIntAddr === fcdaIntAddr &&
         extRefLnClass === fcda.getAttribute('lnClass') &&
-        (!isSubscribed(extRef) || idx === 0)
+        (isSubscribed(extRef) || idx === 0) === subscriptionStatus
       ) {
         matchedPairs.push([fcda, extRef]);
       }
@@ -167,6 +169,16 @@ function matchFCDAsToExtRefs(
   return matchedPairs;
 }
 
+function shouldListen(event: Event): boolean {
+  const initiatingTarget = <Element>event.composedPath()[0];
+  return (
+    initiatingTarget instanceof Element &&
+    initiatingTarget.getAttribute('identity') ===
+      'danyill.oscd-subscriber-later-binding' &&
+    initiatingTarget.hasAttribute('allowexternalplugins')
+  );
+}
+
 export default class SubscriberLaterBindingSiemens extends LitElement {
   /** The document being edited as provided to plugins by [[`OpenSCD`]]. */
   @property({ attribute: false })
@@ -174,6 +186,8 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
 
   @property({ attribute: false })
   docName!: string;
+
+  preEventExtRef: (Element | null)[] = [];
 
   @query('#dialog') dialogUI?: Dialog;
 
@@ -186,32 +200,62 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
   constructor() {
     super();
 
-    // window.addEventListener(
-    //   'oscd-edit',
-    //   event => this.createAdditionalExtRefs(event as EditEvent),
-    //   { capture: true }
-    //   // event.target => plugin and then can get some attribute or something.
-    // );
-
+    // record information to capture intention
     window.addEventListener(
       'oscd-edit',
-      event => this.createAdditionalExtRefs(event as EditEvent)
-      // event.target => plugin and then can get some attribute or something.
+      event => this.captureMetadata(event as EditEvent),
+      { capture: true }
     );
+
+    window.addEventListener('oscd-edit', event => {
+      if (shouldListen(event)) this.modifyAdditionalExtRefs(event as EditEvent);
+    });
   }
 
   async run(): Promise<void> {
     if (this.dialogUI) this.dialogUI.show();
   }
 
-  protected processSiemensExtRef(extRef: Element) {
-    const nextExtRef = extRef.nextElementSibling;
-    const fcdas = findFCDAs(extRef);
+  protected captureMetadata(event: EditEvent): void {
+    if (shouldListen(event)) {
+      // Infinity as 1 due to error type instantiation error
+      // https://github.com/microsoft/TypeScript/issues/49280
+      const flatEdits = [event.detail].flat(Infinity as 1);
+
+      this.preEventExtRef = flatEdits.map(edit => {
+        if (isUpdate(edit) && edit.element.tagName === 'ExtRef')
+          return this.doc.importNode(edit.element, true);
+        return null;
+      });
+    }
+  }
+
+  protected processSiemensExtRef(
+    extRef: Element,
+    preEventExtRef: Element | null
+  ) {
+    // look for change in subscription pre and post-event
+    if (
+      !isSubscribed(extRef) &&
+      preEventExtRef &&
+      !isSubscribed(preEventExtRef)
+    )
+      return;
+
+    const wasSubscribed = preEventExtRef && isSubscribed(preEventExtRef);
+
+    const fcdas = isSubscribed(extRef)
+      ? findFCDAs(extRef)
+      : findFCDAs(preEventExtRef!);
+
     let fcda: Element | undefined;
     // eslint-disable-next-line prefer-destructuring
     if (fcdas) fcda = fcdas[0];
 
+    const nextExtRef = extRef.nextElementSibling;
     if (!nextExtRef || !fcda) return;
+
+    const controlBlock = findControlBlock(extRef);
 
     // See if we have a SV stream and if so do that
     const svOrdered = svOrderedFCDAs(fcda);
@@ -219,76 +263,70 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
       const svExtRefs = Array.from(
         extRef.closest('LDevice')!.querySelectorAll('ExtRef')
       )
-        .slice(0, svOrdered)
         .filter(
           compareExtRef =>
             extRef.compareDocumentPosition(compareExtRef) !==
             Node.DOCUMENT_POSITION_PRECEDING
-        );
+        )
+        .slice(0, svOrdered);
       const svFCDAs = [fcda, ...getNextSiblings(fcda, svOrdered - 1)];
-
-      const controlBlock = findControlBlock(extRef);
 
       matchFCDAsToExtRefs(svFCDAs, svExtRefs).forEach(matchedPair => {
         const mFcda = matchedPair[0];
         const mExtRef = matchedPair[1];
         // TODO: Refactor to multiple connections
-        this.dispatchEvent(
-          newEditEvent(
-            subscribe({
-              sink: mExtRef,
-              source: { fcda: mFcda, controlBlock },
-            })
-          )
-        );
+        if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
+          this.dispatchEvent(
+            newEditEvent(
+              subscribe({
+                sink: mExtRef,
+                source: { fcda: mFcda, controlBlock },
+              })
+            )
+          );
+
+        if (wasSubscribed && !isSubscribed(extRef))
+          this.dispatchEvent(newEditEvent(unsubscribe([mExtRef])));
       });
     }
 
     // Else match value/quality pairs
     const nextFcda = fcda.nextElementSibling;
-    const controlBlock = findControlBlock(extRef);
 
     if (
       extRefMatchSiemens(extRef, nextExtRef) &&
       nextFcda &&
       fcdaMatchSiemens(fcda, nextFcda)
     ) {
-      this.dispatchEvent(
-        newEditEvent(
-          subscribe({
-            sink: nextExtRef,
-            source: { fcda: nextFcda, controlBlock },
-          })
-        )
-      );
+      if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
+        this.dispatchEvent(
+          newEditEvent(
+            subscribe({
+              sink: nextExtRef,
+              source: { fcda: nextFcda, controlBlock },
+            })
+          )
+        );
+
+      if (wasSubscribed && !isSubscribed(extRef))
+        this.dispatchEvent(newEditEvent(unsubscribe([nextExtRef])));
     }
   }
 
-  protected createAdditionalExtRefs(event: EditEvent): void {
+  protected modifyAdditionalExtRefs(event: EditEvent): void {
     if (!this.enabled) return;
 
     // Infinity as 1 due to error type instantiation error
     // https://github.com/microsoft/TypeScript/issues/49280
     const flatEdits = [event.detail].flat(Infinity as 1);
 
-    flatEdits.forEach(edit => {
-      if (isUpdate(edit) && edit.element.tagName === 'ExtRef') {
-        const extRef = edit.element;
-        const iedManufacturer = extRef
-          ?.closest('IED')
-          ?.getAttribute('manufacturer');
-
-        if (
-          !(
-            extRef &&
-            isSubscribed(extRef) &&
-            isSubscribedEv(edit) &&
-            iedManufacturer === 'SIEMENS'
-          )
-        )
-          return;
-
-        this.processSiemensExtRef(extRef);
+    flatEdits.forEach((edit, index) => {
+      if (
+        isUpdate(edit) &&
+        edit.element.tagName === 'ExtRef' &&
+        edit.element?.closest('IED')?.getAttribute('manufacturer') === 'SIEMENS'
+      ) {
+        this.processSiemensExtRef(edit.element, this.preEventExtRef[index]);
       }
     });
   }

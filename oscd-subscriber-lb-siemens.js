@@ -6401,30 +6401,52 @@ function findControlBlock(extRef) {
 
 // import { findFCDAs } from './foundation/subscription/subscription.js';
 /**
- * Check if the ExtRef is already subscribed to a FCDA Element.
+ * Checks that two FCDAs are identical except the second has a quality
+ * attribute.
  *
- * @param extRef - The Ext Ref Element to check.
+ * @param a - an SCL FCDA element.
+ * @param b - an SCL FCDA element.
+ * @returns A boolean indicating that they are a pair.
  */
-function isSubscribedEv(update) {
-    return (update.element.tagName === 'ExtRef' &&
-        ['iedName', 'ldInst', 'lnClass', 'lnInst', 'doName'].every(attr => attr in update.attributes));
+function isfcdaPairWithQuality(a, b) {
+    return ['ldInst', 'prefix', 'lnClass', 'lnInst', 'doName', 'daName'].every(attr => {
+        var _a;
+        return a.getAttribute(attr) === b.getAttribute(attr) ||
+            (attr === 'daName' &&
+                ((_a = b.getAttribute('daName')) === null || _a === void 0 ? void 0 : _a.split('.').slice(-1)[0]) === 'q');
+    });
 }
-const fcdaMatchSiemens = (a, b) => ['ldInst', 'prefix', 'lnClass', 'lnInst', 'doName', 'daName'].every(attr => {
-    var _a;
-    return a.getAttribute(attr) === (b === null || b === void 0 ? void 0 : b.getAttribute(attr)) ||
-        (attr === 'daName' && b.getAttribute('daName') === 'q') ||
-        ((_a = b.getAttribute('daName')) === null || _a === void 0 ? void 0 : _a.split('.').slice(-1)[0]) === 'q';
-});
+/**
+ * Match a value/quality pair for the internal address on a SIemens device.
+ *
+ * A typical example might be:
+ *   * RxExtIn1;/Ind/stVal
+ *   * RxExtIn1;/Ind/q
+ *
+ * @param a - an ExtRef intAddr for a Siemens device.
+ * @param b - an ExtRef intAddr for a Siemens device.
+ * @returns a boolean indicating if the intAddr suggests these
+ * match except in the data attribute.
+ */
 function extRefMatchSiemens(a, b) {
-    var _a, _b, _c;
-    const aParts = (_b = (_a = a.getAttribute('intAddr')) === null || _a === void 0 ? void 0 : _a.split('/')) !== null && _b !== void 0 ? _b : [];
-    const bParts = (_c = b.getAttribute('intAddr')) === null || _c === void 0 ? void 0 : _c.split('/');
+    var _a, _b;
+    const aParts = (_a = a.getAttribute('intAddr')) === null || _a === void 0 ? void 0 : _a.split('/');
+    const bParts = (_b = b.getAttribute('intAddr')) === null || _b === void 0 ? void 0 : _b.split('/');
+    // if missing an intAddr then not a match
+    if (!aParts || !bParts)
+        return false;
     return (JSON.stringify(aParts === null || aParts === void 0 ? void 0 : aParts.slice(0, aParts.length - 1)) ===
-        JSON.stringify(bParts === null || bParts === void 0 ? void 0 : bParts.slice(0, aParts.length - 1)));
+        JSON.stringify(bParts === null || bParts === void 0 ? void 0 : bParts.slice(0, bParts.length - 1)) &&
+        bParts[bParts.length - 1].slice(-1) === 'q');
 }
+/**
+ * Return n siblings of an element.
+ * @param element - an Element
+ * @param n - number of siblings to return
+ * @returns - An element array of siblings
+ */
 function getNextSiblings(element, n) {
     const siblings = [];
-    // Loop n times
     for (let i = 0; i < n; i += 1) {
         if (element.nextElementSibling) {
             siblings.push(element.nextElementSibling);
@@ -6432,7 +6454,6 @@ function getNextSiblings(element, n) {
             element = element.nextElementSibling;
         }
         else {
-            // Break the loop if there are no more siblings
             break;
         }
     }
@@ -6518,6 +6539,7 @@ class SubscriberLaterBindingSiemens extends s {
     constructor() {
         super();
         this.preEventExtRef = [];
+        this.ignoreSupervision = false;
         this.enabled = localStorage.getItem('oscd-subscriber-lb-siemens') === 'true';
         // record information to capture intention
         window.addEventListener('oscd-edit', event => this.captureMetadata(event), { capture: true });
@@ -6530,8 +6552,19 @@ class SubscriberLaterBindingSiemens extends s {
         if (this.dialogUI)
             this.dialogUI.show();
     }
+    /**
+     * This method records the ExtRefs prior to the EditEvent and
+     * also records whether supervisions can be changed for later
+     * processing.
+     * @param event - An EditEvent.
+     */
     captureMetadata(event) {
+        var _a;
         if (shouldListen(event)) {
+            const initiatingTarget = event.composedPath()[0];
+            // is the later binding subscriber plugin allowing supervisions
+            this.ignoreSupervision =
+                (_a = initiatingTarget.hasAttribute('ignoresupervision')) !== null && _a !== void 0 ? _a : false;
             // Infinity as 1 due to error type instantiation error
             // https://github.com/microsoft/TypeScript/issues/49280
             const flatEdits = [event.detail].flat(Infinity);
@@ -6542,59 +6575,121 @@ class SubscriberLaterBindingSiemens extends s {
             });
         }
     }
+    /**
+     * Assess ExtRef for being associate with GOOSE value/quality and
+     * dispatch subscribe or unsubscribe events.
+     *
+     * @param firstExtRef - an ExtRef subject to subscribe/unsubscribe.
+     * @param preEventExtRef - an ExtRef subject to subscribe/unsubscribe.
+     * but prior to the evnet.
+     * @param firstFcda - the matching FCDA to the first ExtRef.
+     * @returns
+     */
+    modifyValueAndQualityPair(firstExtRef, preEventExtRef, firstFcda) {
+        const controlBlock = findControlBlock(firstExtRef);
+        // Else match value/quality pairs
+        const nextFcda = firstFcda.nextElementSibling;
+        const nextExtRef = firstExtRef.nextElementSibling;
+        // They must exist
+        if (!nextFcda || !nextExtRef)
+            return;
+        const wasSubscribed = preEventExtRef && isSubscribed(preEventExtRef);
+        if (extRefMatchSiemens(firstExtRef, nextExtRef) &&
+            nextFcda &&
+            isfcdaPairWithQuality(firstFcda, nextFcda)) {
+            if (!wasSubscribed && isSubscribed(firstExtRef) && controlBlock)
+                this.dispatchEvent(newEditEvent(subscribe({
+                    sink: nextExtRef,
+                    source: { fcda: nextFcda, controlBlock },
+                })));
+            if (wasSubscribed && !isSubscribed(firstExtRef))
+                this.dispatchEvent(newEditEvent(unsubscribe([nextExtRef])));
+        }
+    }
+    /**
+     * Assess ExtRef for being associate with SV traffic and dispatch
+     * subscribe or unsubscribe events.
+     *
+     * @param firstExtRef - an ExtRef subject to subscribe/unsubscribe
+     * @param preEventExtRef - an ExtRef subject to subscribe/unsubscribe
+     * but prior to the evnet.
+     * @param firstFcda - the matching FCDA to the first ExtRef.
+     * @returns
+     */
+    modifySampledValueExtRefs(firstExtRef, preEventExtRef, firstFcda) {
+        const numberOfSvs = svOrderedFCDAs(firstFcda);
+        // 2 consecutive matches required to process SV traffic further otherwise
+        // use value/quality matching
+        if (!(numberOfSvs > 2))
+            return;
+        const controlBlock = findControlBlock(firstExtRef);
+        const wasSubscribed = preEventExtRef && isSubscribed(preEventExtRef);
+        // In SIPROTEC 5, phases are within consecutive logical nodes within
+        // the same logical device
+        const svExtRefs = Array.from(firstExtRef.closest('LDevice').querySelectorAll('ExtRef'))
+            .filter(compareExtRef => firstExtRef.compareDocumentPosition(compareExtRef) !==
+            Node.DOCUMENT_POSITION_PRECEDING)
+            .slice(0, numberOfSvs);
+        const svFCDAs = [firstFcda, ...getNextSiblings(firstFcda, numberOfSvs - 1)];
+        // FCDAs are matched to ExtRefs
+        matchFCDAsToExtRefs(svFCDAs, svExtRefs).forEach(matchedPair => {
+            const mFcda = matchedPair[0];
+            const mExtRef = matchedPair[1];
+            // TODO: Refactor to multiple connections
+            if (!wasSubscribed && isSubscribed(firstExtRef) && controlBlock)
+                this.dispatchEvent(newEditEvent(subscribe({
+                    sink: mExtRef,
+                    source: { fcda: mFcda, controlBlock },
+                })));
+            if (wasSubscribed && !isSubscribed(firstExtRef))
+                this.dispatchEvent(newEditEvent(unsubscribe([mExtRef], {
+                    ignoreSupervision: this.ignoreSupervision,
+                })));
+        });
+    }
+    /**
+     * Will generate and dispatch further EditEvents based on matching an
+     * ExtRef with subsequent ExtRefs and the first FCDA with subsequent
+     * FCDAs. Uses both `extRef` and `preEventExtRef` to ensure subscription
+     * information is available for unsubscribe edits.
+     * @param extRef - an SCL ExtRef element
+     * @param preEventExtRef - an SCL ExtRef element cloned before changes
+     * @returns
+     */
     processSiemensExtRef(extRef, preEventExtRef) {
         // look for change in subscription pre and post-event
         if (!isSubscribed(extRef) &&
             preEventExtRef &&
             !isSubscribed(preEventExtRef))
             return;
-        const wasSubscribed = preEventExtRef && isSubscribed(preEventExtRef);
         const fcdas = isSubscribed(extRef)
             ? findFCDAs(extRef)
             : findFCDAs(preEventExtRef);
-        let fcda;
+        let firstFcda;
         // eslint-disable-next-line prefer-destructuring
         if (fcdas)
-            fcda = fcdas[0];
-        const nextExtRef = extRef.nextElementSibling;
-        if (!nextExtRef || !fcda)
+            firstFcda = fcdas[0];
+        // must be able to locate the first fcda to continue
+        if (!firstFcda)
             return;
-        const controlBlock = findControlBlock(extRef);
-        // See if we have a SV stream and if so do that
-        const svOrdered = svOrderedFCDAs(fcda);
-        if (svOrdered > 2) {
-            const svExtRefs = Array.from(extRef.closest('LDevice').querySelectorAll('ExtRef'))
-                .filter(compareExtRef => extRef.compareDocumentPosition(compareExtRef) !==
-                Node.DOCUMENT_POSITION_PRECEDING)
-                .slice(0, svOrdered);
-            const svFCDAs = [fcda, ...getNextSiblings(fcda, svOrdered - 1)];
-            matchFCDAsToExtRefs(svFCDAs, svExtRefs).forEach(matchedPair => {
-                const mFcda = matchedPair[0];
-                const mExtRef = matchedPair[1];
-                // TODO: Refactor to multiple connections
-                if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
-                    this.dispatchEvent(newEditEvent(subscribe({
-                        sink: mExtRef,
-                        source: { fcda: mFcda, controlBlock },
-                    })));
-                if (wasSubscribed && !isSubscribed(extRef))
-                    this.dispatchEvent(newEditEvent(unsubscribe([mExtRef])));
-            });
-        }
-        // Else match value/quality pairs
-        const nextFcda = fcda.nextElementSibling;
-        if (extRefMatchSiemens(extRef, nextExtRef) &&
-            nextFcda &&
-            fcdaMatchSiemens(fcda, nextFcda)) {
-            if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
-                this.dispatchEvent(newEditEvent(subscribe({
-                    sink: nextExtRef,
-                    source: { fcda: nextFcda, controlBlock },
-                })));
-            if (wasSubscribed && !isSubscribed(extRef))
-                this.dispatchEvent(newEditEvent(unsubscribe([nextExtRef])));
-        }
+        // If we have a SV stream do as many matching subscriptions as possible
+        this.modifySampledValueExtRefs(extRef, preEventExtRef, firstFcda);
+        // If we have a value/quality pair do that
+        this.modifyValueAndQualityPair(extRef, preEventExtRef, firstFcda);
     }
+    /**
+     * Either subscribe or unsubscribe from additional ExtRefs adjacent
+     * to any ExtRefs found within an event if conditions are met for
+     * manufacturer and event type.
+     *
+     * Assumes that all adding and removing of subscriptions is done
+     * through Update edits of ExtRef elements.
+     *
+     * Only looks at IEDs whose manufacturer is "SIEMENS"
+     *
+     * @param event - An open-scd-core EditEvent
+     * @returns nothing.
+     */
     modifyAdditionalExtRefs(event) {
         if (!this.enabled)
             return;
@@ -6609,6 +6704,9 @@ class SubscriberLaterBindingSiemens extends s {
                 this.processSiemensExtRef(edit.element, this.preEventExtRef[index]);
             }
         });
+        // restore pre-event cached data
+        this.preEventExtRef = [];
+        this.ignoreSupervision = false;
     }
     render() {
         return x `<mwc-dialog
@@ -6663,5 +6761,5 @@ __decorate([
     n$2({ attribute: false })
 ], SubscriberLaterBindingSiemens.prototype, "enabled", void 0);
 
-export { SubscriberLaterBindingSiemens as default, isSubscribedEv };
+export { SubscriberLaterBindingSiemens as default };
 //# sourceMappingURL=oscd-subscriber-lb-siemens.js.map

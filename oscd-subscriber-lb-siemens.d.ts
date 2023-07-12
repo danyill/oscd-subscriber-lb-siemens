@@ -71,4 +71,5 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
      */
     protected modifyAdditionalExtRefs(event: EditEvent): void;
     render(): TemplateResult;
+    static styles: import("lit").CSSResult;
 }

@@ -6708,26 +6708,26 @@ class SubscriberLaterBindingSiemens extends s {
         this.preEventExtRef = [];
         this.ignoreSupervision = false;
     }
+    // TODO: Update URL when subscriber later binding is shepherded by OpenSCD organisation
     render() {
         return x `<mwc-dialog
       id="dialog"
       heading="${msg('Subscriber Later Binding - Siemens')}"
     >
-      <p>
-        ${msg('This plugin works with the')}
-        <!-- TODO: Update URL when subscriber later binding is shepherded by OpenSCD organisation -->
+      <p>${msg('This plugin works with the')}
         <a
           href="https://github.com/danyill/oscd-subscriber-later-binding"
           target="_blank"
           >Subscriber Later Binding plugin</a
         >
-        ${msg('to provide enhancements for SIPROTEC 5 devices.')}
+        ${msg('to provide enhancements for SIPROTEC 5 devices:')}
         <ul>
           <li>${msg('Automatic quality mapping')}</li>
           <li>${msg('Automatic multi-phase mapping')}</li>
         </ul>
+        ${msg('for subscribing and unsubscribing.')}
       </p>
-      <mwc-formfield style="float:right" label="${msg('Enabled')}">
+      <mwc-formfield label="${msg('Enabled')}">
         <mwc-switch id="enabled" ?selected=${this.enabled}>
         </mwc-switch>
       </mwc-formfield>
@@ -6745,6 +6745,11 @@ class SubscriberLaterBindingSiemens extends s {
     </mwc-dialog>`;
     }
 }
+SubscriberLaterBindingSiemens.styles = i$5 `
+    mwc-formfield {
+      float: right;
+    }
+  `;
 __decorate([
     n$2({ attribute: false })
 ], SubscriberLaterBindingSiemens.prototype, "doc", void 0);

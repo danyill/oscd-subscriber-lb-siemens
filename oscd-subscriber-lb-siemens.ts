@@ -1,5 +1,5 @@
 import { msg } from '@lit/localize';
-import { html, LitElement, TemplateResult } from 'lit';
+import { css, html, LitElement, TemplateResult } from 'lit';
 import { property, query } from 'lit/decorators.js';
 
 import '@material/mwc-button';
@@ -433,26 +433,26 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
     this.ignoreSupervision = false;
   }
 
+  // TODO: Update URL when subscriber later binding is shepherded by OpenSCD organisation
   render(): TemplateResult {
     return html`<mwc-dialog
       id="dialog"
       heading="${msg('Subscriber Later Binding - Siemens')}"
     >
-      <p>
-        ${msg('This plugin works with the')}
-        <!-- TODO: Update URL when subscriber later binding is shepherded by OpenSCD organisation -->
+      <p>${msg('This plugin works with the')}
         <a
           href="https://github.com/danyill/oscd-subscriber-later-binding"
           target="_blank"
           >Subscriber Later Binding plugin</a
         >
-        ${msg('to provide enhancements for SIPROTEC 5 devices.')}
+        ${msg('to provide enhancements for SIPROTEC 5 devices:')}
         <ul>
           <li>${msg('Automatic quality mapping')}</li>
           <li>${msg('Automatic multi-phase mapping')}</li>
         </ul>
+        ${msg('for subscribing and unsubscribing.')}
       </p>
-      <mwc-formfield style="float:right" label="${msg('Enabled')}">
+      <mwc-formfield label="${msg('Enabled')}">
         <mwc-switch id="enabled" ?selected=${this.enabled}>
         </mwc-switch>
       </mwc-formfield>
@@ -468,4 +468,10 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
       ></mwc-button>
     </mwc-dialog>`;
   }
+
+  static styles = css`
+    mwc-formfield {
+      float: right;
+    }
+  `;
 }

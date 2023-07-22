@@ -21,6 +21,7 @@
 :uri-ci-bundle: https://danyill.github.io/oscd-subscriber-lb-siemens/oscd-subscriber-lb-siemens.js
 :uri-material-icons: https://fonts.google.com/icons
 :uri-openscd-core-plugin-demo: https://danyill.github.io/oscd-subscriber-lb-siemens/index.deploy.html
+:source-highlighter: highlight.js
 
 == What is this?
 
@@ -43,10 +44,12 @@ Feel free to log issues to request fixes, improvements or new features.
 
 == How it works
 
-IMPORTANT: Explain!
+. This plugin does only two things:
 
-Matches a bunch of FCDAs within a DataSet like so:
+* If two adjacent `ExtRef` elements have the same intAddr except there is a `q` then if in the subscribing dataset the adjacent FCDA elements are the same except the second is a quality attribute, then the quality will be automatically subscribed/unsubscribed.
 
+* For Sampled Values, a set of up to 4 TCTR or TVTR data attributes will be subscribed to associated ExtRef elements. For example the following:
++
 [source,xml]
 ----
   <FCDA ldInst="PowS_PhaseCT" prefix="" lnClass="TCTR" lnInst="1" doName="AmpSv" daName="instMag.i" fc="MX" />
@@ -60,39 +63,54 @@ Matches a bunch of FCDAs within a DataSet like so:
   <FCDA ldInst="PowS_PhaseCT" prefix="" lnClass="TCTR" lnInst="1" doName="AmpSv" daName="instMag.i" fc="MX" />
   <FCDA ldInst="PowS_PhaseCT" prefix="" lnClass="TCTR" lnInst="1" doName="AmpSv" daName="q" fc="MX" />
 ----
-
-With a bunch of ExtRefs like so:
-
++
+Can be subscribed to a group of ExtRefs as shown:
++
 [source,xml]
 ----
 <LDevice desc="PowS_BAY240MUCT" inst="PowS_CT242">
 	<LN prefix="" lnClass="TCTR" inst="1" lnType="SIPROTEC5_LNType_TCTR" desc="CT 1">
-		<ExtRef desc="PowS_BAY240MUCT.CT 1" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="1" doName="AmpSv" daName="instMag.i" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
-		<ExtRef desc="PowS_BAY240MUCT.CT 1" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="1" doName="AmpSv" daName="q" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 1" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i"/>
+		<ExtRef desc="PowS_BAY240MUCT.CT 1" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" />
 	</Inputs>
 </LN>
 <LN prefix="" lnClass="TCTR" inst="2" lnType="SIPROTEC5_LNType_TCTR" desc="CT 2">
 	<Inputs>
-		<ExtRef desc="PowS_BAY240MUCT.CT 2" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="2" doName="AmpSv" daName="instMag.i" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
-		<ExtRef desc="PowS_BAY240MUCT.CT 2" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="2" doName="AmpSv" daName="q" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 2" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 2" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" />
 	</Inputs>
 </LN>
 <LN prefix="" lnClass="TCTR" inst="3" lnType="SIPROTEC5_LNType_TCTR" desc="CT 3">
 	<Inputs>
-		<ExtRef desc="PowS_BAY240MUCT.CT 3" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="3" doName="AmpSv" daName="instMag.i" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
-		<ExtRef desc="PowS_BAY240MUCT.CT 3" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="3" doName="AmpSv" daName="q" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 3" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 3" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" />
 	</Inputs>
 </LN>
 <LN prefix="" lnClass="TCTR" inst="4" lnType="SIPROTEC5_LNType_TCTR" desc="CT 4">
 	<Inputs>
-		<ExtRef desc="PowS_BAY240MUCT.CT 4" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="4" doName="AmpSv" daName="instMag.i" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
-		<ExtRef desc="PowS_BAY240MUCT.CT 4" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" iedName="XAT_242_M2" ldInst="PowS_MeasPointI3ph1" lnClass="TCTR" lnInst="4" doName="AmpSv" daName="q" srcLDInst="PortE_MU1" srcLNClass="LLN0" srcCBName="MSVCB01" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 4" intAddr="AmpSv;TCTR/AmpSv/instMag.i" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="instMag.i" />
+		<ExtRef desc="PowS_BAY240MUCT.CT 4" intAddr="AmpSv;TCTR/AmpSv/q" serviceType="SMV" pServT="SMV" pLN="TCTR" pDO="AmpSv" pDA="q" />
 	</Inputs>
 </LN>
 </LDevice>
 ----
 
-== How to use?
+== Using the Plugin
+
+Follow the steps in <<Loading the Plugin>>.
+Once the plugin is loaded:
+
+. The plugin provides a menu option. Go to the menu in the top left and click on the plugin name.
+
+. Then click enabled and then "Close".
++
+image::../../test/screenshots/baseline/configure the plugin is initially disabled-Chromium.png[]
+
+. In either the publisher or subscriber view, click on the settings icon (a cog) and check that "Allow External Plugins is checked.".
+
+. The plugin will automatic add or remove subscriptions as required.
+
+== Loading the Plugin
 
 === Online Using the Latest open-scd-core
 
@@ -285,12 +303,4 @@ To run a local development server that serves the basic demo located in `demo/in
 npm start
 ----
 
-== Credit
-
-This plugin was refactored from base code in OpenSCD and relies on the code, architecture and review effort of multiple people other than the authors of this plugin, including:
-
 © 2023 Daniel Mulholland
-
-
-
-

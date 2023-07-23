@@ -453,7 +453,10 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
         ${msg('for subscribing and unsubscribing.')}
       </p>
       <mwc-formfield label="${msg('Enabled')}">
-        <mwc-switch id="enabled" ?selected=${this.enabled}>
+        <!-- TODO: Remove ?checked when open-scd uses later version of mwc-components -->
+        <mwc-switch id="enabled" ?selected=${this.enabled} ?checked=${
+      this.enabled
+    }>
         </mwc-switch>
       </mwc-formfield>
       <mwc-button
@@ -461,7 +464,9 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
         slot="primaryAction"
         icon="done"
         @click="${() => {
-          this.enabled = this.enabledUI!.selected;
+          // TODO: Remove when open-scd uses later version of mwc-components.
+          this.enabled =
+            this.enabledUI!.selected ?? (<any>this.enabledUI!).checked ?? false;
           localStorage.setItem('oscd-subscriber-lb-siemens', `${this.enabled}`);
           if (this.dialogUI) this.dialogUI.close();
         }}"

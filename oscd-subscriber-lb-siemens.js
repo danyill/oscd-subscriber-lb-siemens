@@ -6539,6 +6539,7 @@ class SubscriberLaterBindingSiemens extends s {
         super();
         this.preEventExtRef = [];
         this.ignoreSupervision = false;
+        this.checkOnlyPreferredBasicType = false;
         this.enabled = localStorage.getItem('oscd-subscriber-lb-siemens') === 'true';
         // record information to capture intention
         window.addEventListener('oscd-edit', event => this.captureMetadata(event), { capture: true });
@@ -6558,12 +6559,14 @@ class SubscriberLaterBindingSiemens extends s {
      * @param event - An EditEvent.
      */
     captureMetadata(event) {
-        var _a;
+        var _a, _b;
         if (shouldListen(event)) {
             const initiatingTarget = event.composedPath()[0];
             // is the later binding subscriber plugin allowing supervisions
             this.ignoreSupervision =
                 (_a = initiatingTarget.hasAttribute('ignoresupervision')) !== null && _a !== void 0 ? _a : false;
+            this.checkOnlyPreferredBasicType =
+                (_b = initiatingTarget.hasAttribute('checkonlypreferredbasictype')) !== null && _b !== void 0 ? _b : false;
             // Infinity as 1 due to error type instantiation error
             // https://github.com/microsoft/TypeScript/issues/49280
             const flatEdits = [event.detail].flat(Infinity);
@@ -6600,7 +6603,14 @@ class SubscriberLaterBindingSiemens extends s {
                 this.dispatchEvent(newEditEvent(subscribe({
                     sink: nextExtRef,
                     source: { fcda: nextFcda, controlBlock },
-                })));
+                }, 
+                // TODO: Update when issue fully resolved:
+                // see https://github.com/danyill/oscd-subscriber-later-binding/issues/10
+                //
+                // { checkOnlyBType: this.checkOnlyPreferredBasicType }
+                this.checkOnlyPreferredBasicType
+                    ? { force: true }
+                    : { force: false })));
             if (wasSubscribed && !isSubscribed(firstExtRef))
                 this.dispatchEvent(newEditEvent(unsubscribe([nextExtRef])));
         }

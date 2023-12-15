@@ -12,6 +12,7 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
     docName: string;
     preEventExtRef: (Element | null)[];
     ignoreSupervision: boolean;
+    checkOnlyPreferredBasicType: boolean;
     dialogUI?: Dialog;
     enabledUI?: Switch;
     enabled: boolean;

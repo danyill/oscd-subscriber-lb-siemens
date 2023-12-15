@@ -201,6 +201,8 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
 
   ignoreSupervision: boolean = false;
 
+  checkOnlyPreferredBasicType: boolean = false;
+
   @query('#dialog') dialogUI?: Dialog;
 
   @query('#enabled') enabledUI?: Switch;
@@ -240,6 +242,8 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
       // is the later binding subscriber plugin allowing supervisions
       this.ignoreSupervision =
         initiatingTarget.hasAttribute('ignoresupervision') ?? false;
+      this.checkOnlyPreferredBasicType =
+        initiatingTarget.hasAttribute('checkonlypreferredbasictype') ?? false;
 
       // Infinity as 1 due to error type instantiation error
       // https://github.com/microsoft/TypeScript/issues/49280
@@ -286,10 +290,19 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
       if (!wasSubscribed && isSubscribed(firstExtRef) && controlBlock)
         this.dispatchEvent(
           newEditEvent(
-            subscribe({
-              sink: nextExtRef,
-              source: { fcda: nextFcda, controlBlock },
-            })
+            subscribe(
+              {
+                sink: nextExtRef,
+                source: { fcda: nextFcda, controlBlock },
+              },
+              // TODO: Update when issue fully resolved:
+              // see https://github.com/danyill/oscd-subscriber-later-binding/issues/10
+              //
+              // { checkOnlyBType: this.checkOnlyPreferredBasicType }
+              this.checkOnlyPreferredBasicType
+                ? { force: true }
+                : { force: false }
+            )
           )
         );
 

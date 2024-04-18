@@ -294,14 +294,8 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
               {
                 sink: nextExtRef,
                 source: { fcda: nextFcda, controlBlock },
-              },
-              // TODO: Update when issue fully resolved:
-              // see https://github.com/danyill/oscd-subscriber-later-binding/issues/10
-              //
-              // { checkOnlyBType: this.checkOnlyPreferredBasicType }
-              this.checkOnlyPreferredBasicType
-                ? { force: true }
-                : { force: false }
+              }
+              // {checkOnlyPreferredBasicType: this.checkOnlyPreferredBasicType}
             )
           )
         );

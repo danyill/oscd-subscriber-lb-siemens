@@ -291,11 +291,12 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
         this.dispatchEvent(
           newEditEvent(
             subscribe(
+              { sink: nextExtRef, source: { fcda: nextFcda, controlBlock } },
               {
-                sink: nextExtRef,
-                source: { fcda: nextFcda, controlBlock },
+                force: false,
+                ignoreSupervision: false,
+                checkOnlyBType: this.checkOnlyPreferredBasicType,
               }
-              // {checkOnlyPreferredBasicType: this.checkOnlyPreferredBasicType}
             )
           )
         );

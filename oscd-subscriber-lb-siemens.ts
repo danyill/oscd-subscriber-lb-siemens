@@ -17,50 +17,6 @@ import {
   findFCDAs,
   isSubscribed,
 } from './foundation/subscription/subscription.js';
-// import { findFCDAs } from './foundation/subscription/subscription.js';
-
-/**
- * Checks that two FCDAs are identical except the second has a quality
- * attribute.
- *
- * @param a - an SCL FCDA element.
- * @param b - an SCL FCDA element.
- * @returns A boolean indicating that they are a pair.
- */
-function isfcdaPairWithQuality(a: Element, b: Element): boolean {
-  return ['ldInst', 'prefix', 'lnClass', 'lnInst', 'doName', 'daName'].every(
-    attr =>
-      a.getAttribute(attr) === b.getAttribute(attr) ||
-      (attr === 'daName' &&
-        b.getAttribute('daName')?.split('.').slice(-1)[0] === 'q')
-  );
-}
-
-/**
- * Match a value/quality pair for the internal address on a SIemens device.
- *
- * A typical example might be:
- *   * RxExtIn1;/Ind/stVal
- *   * RxExtIn1;/Ind/q
- *
- * @param a - an ExtRef intAddr for a Siemens device.
- * @param b - an ExtRef intAddr for a Siemens device.
- * @returns a boolean indicating if the intAddr suggests these
- * match except in the data attribute.
- */
-function extRefMatchSiemens(a: Element, b: Element): boolean {
-  const aParts = a.getAttribute('intAddr')?.split('/');
-  const bParts = b.getAttribute('intAddr')?.split('/');
-
-  // if missing an intAddr then not a match
-  if (!aParts || !bParts) return false;
-
-  return (
-    JSON.stringify(aParts?.slice(0, aParts.length - 1)) ===
-      JSON.stringify(bParts?.slice(0, bParts.length - 1)) &&
-    bParts[bParts.length - 1].slice(-1) === 'q'
-  );
-}
 
 /**
  * Return n siblings of an element.
@@ -189,6 +145,74 @@ function shouldListen(event: Event): boolean {
   );
 }
 
+function parseExtRefIntAddr(extRef: Element): {
+  name: string;
+  lN: string | undefined;
+  dOParts: string;
+  dAParts: string;
+} | null {
+  const intAddr = extRef.getAttribute('intAddr');
+  // e.g. RxTapChg1;ATCC/TapChg/valWTr.posVal
+  if (intAddr === null) return null;
+  const parts = intAddr.split(';');
+  if (parts.length !== 2) return null;
+
+  const [name, remainder] = parts;
+  const pathParts = remainder.split('/');
+  let lN;
+  let dOParts;
+  let dAParts;
+
+  if (pathParts.length === 3) {
+    [lN, dOParts, dAParts] = pathParts;
+  } else if (pathParts.length === 2) {
+    [lN, dOParts, dAParts] = [undefined, ...pathParts];
+  } else {
+    return null;
+  }
+  return { name, lN, dOParts, dAParts };
+}
+
+function findMatchingQualityFCDA(fcda: Element): Element | null | undefined {
+  if (!fcda.parentElement) return null;
+
+  return Array.from(fcda.parentElement.getElementsByTagName('FCDA')).find(
+    candidateFcda =>
+      candidateFcda.getAttribute('ldInst') === fcda.getAttribute('ldInst') &&
+      candidateFcda.getAttribute('prefix') === fcda.getAttribute('prefix') &&
+      candidateFcda.getAttribute('lnClass') === fcda.getAttribute('lnClass') &&
+      candidateFcda.getAttribute('lnInst') === fcda.getAttribute('lnInst') &&
+      candidateFcda.getAttribute('doName') === fcda.getAttribute('doName') &&
+      candidateFcda.getAttribute('daName') === 'q'
+  );
+}
+
+function findMatchingQualityExtRef(
+  extRef: Element
+): Element | null | undefined {
+  if (!extRef.parentElement) return null;
+
+  const parsedIntAddr = parseExtRefIntAddr(extRef);
+  if (!parsedIntAddr) return null;
+
+  const { name, lN, dOParts } = parsedIntAddr;
+
+  // Get all ExtRef elements in the same Inputs element
+  return Array.from(extRef.parentElement.getElementsByTagName('ExtRef')).find(
+    candidateExtRef => {
+      const parsedCandidate = parseExtRefIntAddr(candidateExtRef);
+      if (!parsedCandidate) return false;
+
+      return (
+        parsedCandidate.name === name &&
+        parsedCandidate.lN === lN &&
+        parsedCandidate.dOParts === dOParts &&
+        parsedCandidate.dAParts === 'q'
+      );
+    }
+  );
+}
+
 export default class SubscriberLaterBindingSiemens extends LitElement {
   /** The document being edited as provided to plugins by [[`OpenSCD`]]. */
   @property({ attribute: false })
@@ -261,49 +285,45 @@ export default class SubscriberLaterBindingSiemens extends LitElement {
    * Assess ExtRef for being associate with GOOSE value/quality and
    * dispatch subscribe or unsubscribe events.
    *
-   * @param firstExtRef - an ExtRef subject to subscribe/unsubscribe.
+   * @param extRef - an ExtRef subject to subscribe/unsubscribe.
    * @param preEventExtRef - an ExtRef subject to subscribe/unsubscribe.
-   * but prior to the evnet.
-   * @param firstFcda - the matching FCDA to the first ExtRef.
+   * but prior to the event.
+   * @param fcda - the matching FCDA to the first ExtRef.
    * @returns
    */
   protected modifyValueAndQualityPair(
-    firstExtRef: Element,
+    extRef: Element,
     preEventExtRef: Element | null,
-    firstFcda: Element
+    fcda: Element
   ): void {
-    const controlBlock = findControlBlock(firstExtRef);
+    const controlBlock = findControlBlock(extRef);
 
-    // Else match value/quality pairs
-    const nextFcda = firstFcda.nextElementSibling;
-    const nextExtRef = firstExtRef.nextElementSibling;
+    const qualityFcda = findMatchingQualityFCDA(fcda);
+    const qualityExtRef = findMatchingQualityExtRef(extRef);
 
-    // They must exist
-    if (!nextFcda || !nextExtRef) return;
+    if (!qualityFcda || !qualityExtRef) return;
 
     const wasSubscribed = preEventExtRef && isSubscribed(preEventExtRef);
-    if (
-      extRefMatchSiemens(firstExtRef, nextExtRef) &&
-      nextFcda &&
-      isfcdaPairWithQuality(firstFcda, nextFcda)
-    ) {
-      if (!wasSubscribed && isSubscribed(firstExtRef) && controlBlock)
-        this.dispatchEvent(
-          newEditEvent(
-            subscribe(
-              { sink: nextExtRef, source: { fcda: nextFcda, controlBlock } },
-              {
-                force: false,
-                ignoreSupervision: false,
-                checkOnlyBType: this.checkOnlyPreferredBasicType,
-              }
-            )
-          )
-        );
 
-      if (wasSubscribed && !isSubscribed(firstExtRef))
-        this.dispatchEvent(newEditEvent(unsubscribe([nextExtRef])));
-    }
+    if (!wasSubscribed && isSubscribed(extRef) && controlBlock)
+      this.dispatchEvent(
+        newEditEvent(
+          subscribe(
+            {
+              sink: qualityExtRef,
+              source: { fcda: qualityFcda, controlBlock },
+            },
+            {
+              force: false,
+              ignoreSupervision: false,
+              checkOnlyBType: this.checkOnlyPreferredBasicType,
+            }
+          )
+        )
+      );
+
+    if (wasSubscribed && !isSubscribed(extRef))
+      this.dispatchEvent(newEditEvent(unsubscribe([qualityExtRef])));
   }
 
   /**
